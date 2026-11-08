@@ -111,6 +111,48 @@ Rule by rule:
 - **IPv6** — the stock libvirt `default` network is IPv4-only. If you've added an
   IPv6 subnet, add matching `ufw` rules for it.
 
+## Migrating from the broad version of this fix
+
+Most people hit this problem, find the quick unscoped advice first, and end up with
+rules like these:
+
+```bash
+ufw allow in on virbr0 to any port 53 proto udp
+ufw allow in on virbr0 to any port 53 proto tcp
+ufw allow in on virbr0 to any port 67 proto udp
+ufw route allow in on virbr0
+```
+
+Those work. They just accept from *any* source address arriving on the bridge, so a
+guest spoofing an off-subnet source still gets forwarded. To tighten them up:
+
+**Apply the scoped rules first, then delete the broad ones.** In that order there is
+no window where guests have no rule at all — reversed, every VM loses DNS in the gap.
+
+```bash
+sudo ./ufw-libvirt.sh
+
+sudo ufw delete allow in on virbr0 to any port 53 proto udp
+sudo ufw delete allow in on virbr0 to any port 53 proto tcp
+sudo ufw route delete allow in on virbr0
+```
+
+Three deletes, not four. **Do not delete the udp/67 rule** — the DHCP rule this
+script adds is identical to the broad one (it can't be subnet-scoped, see above), so
+`ufw` reports it as already present and deleting it afterwards would remove the rule
+you just kept.
+
+The deletes are unambiguous: the broad rules' tuples carry `0.0.0.0/0` as the source
+and the scoped ones carry your subnet, so a delete spec with no `from` clause can only
+match the broad rule. Confirm with `sudo ./ufw-libvirt.sh --status` — you want four
+`virbr0` rules, three scoped to your subnet and the udp/67 one unscoped.
+
+If guest DNS breaks at any point, `sudo ufw route allow in on virbr0` puts the broad
+forward rule straight back.
+
+Substitute your own bridge and subnet throughout if they aren't the stock
+`virbr0` / `192.168.122.0/24`.
+
 ## Rebooting
 
 **Nothing extra is required.** `ufw allow` is not a live-only change — it writes the
@@ -203,6 +245,10 @@ sudo ./ufw-libvirt.sh --remove
 Deletes exactly the four rules it added, with the same subnet and bridge arguments
 you applied them with. Pass the same `--subnet`/`--bridge` you used, or it won't
 match.
+
+This removes the *scoped* rules. If you also have broad rules left over from an
+earlier attempt, see
+[Migrating from the broad version of this fix](#migrating-from-the-broad-version-of-this-fix).
 
 ## Options
 
