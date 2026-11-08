@@ -5,7 +5,7 @@ Make libvirt guests work on a host running **ufw** with default-deny policies.
 One script, four firewall rules, no daemon and no systemd unit.
 
 ```bash
-git clone https://github.com/<you>/ufw-libvirt.git
+git clone https://github.com/636B65/ufw-libvirt.git
 cd ufw-libvirt
 ./ufw-libvirt.sh --dry-run        # see exactly what it will do
 sudo ./ufw-libvirt.sh             # apply
@@ -62,15 +62,20 @@ exception is the entire reason this is so confusing to diagnose.
 
 ### Why libvirt's own rules don't save you
 
-Modern libvirt (9+) installs its forwarding and NAT rules into its **own nftables
-table**, separate from the `filter` table ufw manages. The two never consult each
-other. libvirt's accept rules are genuinely there, and ufw's `FORWARD` drop still
-happens, so the packet dies anyway.
+Unless told otherwise, libvirt picks the first available backend from
+`[nftables, iptables]` — so on any host with `nft` installed, it writes its
+forwarding and NAT rules into its **own nftables table**, separate from the `filter`
+table ufw manages. The two never consult each other. libvirt's accept rules are
+genuinely there, ufw's `FORWARD` drop still happens, and the packet dies anyway.
 
-This is also why the workaround you'll find in old forum threads —
-`firewall_backend=iptables` in `/etc/libvirt/network.conf` — does not fix it. It
-changes which backend libvirt writes to; it does nothing about a DROP policy in
-ufw's chains.
+You'll also find `firewall_backend = "iptables"` in `/etc/libvirt/network.conf`
+suggested in forum threads. That moves libvirt's rules into the same `iptables`
+table ufw uses, so whether it helps comes down to rule ordering — some people report
+it working. It was not tested here, it leaves you mixing backends on a host where ufw
+owns the `filter` table, and it does nothing about the INPUT-side DNS and DHCP drops.
+This script takes the ufw-native route instead. (If you do try it, libvirt supports
+switching while networks are active; the change lands on the next
+`libvirtd`/`virtnetworkd` restart.)
 
 ## The fix
 

@@ -242,7 +242,11 @@ status)
     if command -v journalctl >/dev/null; then
         n=$(journalctl -k -b 2>/dev/null | grep -c "UFW BLOCK.*$LIBVIRT_BRIDGE" || true)
         msg "[UFW BLOCK] entries on $LIBVIRT_BRIDGE this boot: ${n:-0}"
-        [[ ${n:-0} -gt 0 ]] && msg "(entries from before the fix was applied are expected; check their timestamps)"
+        if (( ${n:-0} > 0 )); then
+            msg "(entries from before the fix was applied are expected; check their timestamps)"
+        fi
     fi
     ;;
 esac
+
+exit 0
